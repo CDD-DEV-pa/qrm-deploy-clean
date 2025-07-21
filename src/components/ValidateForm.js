@@ -43,7 +43,7 @@ export default function ValidateForm() {
   // Fetch semnalul de zi
   useEffect(() => {
     setLoadingSemnal(true);
-    fetch(`/api/semnal-zi?protocol_day=${protocolDay + 1}`)
+    fetch(`https://backend-qrm-production.up.railway.app/api/semnal-zi?protocol_day=${protocolDay + 1}`)
       .then(res => res.json())
       .then(data => {
         setPauza(!!data.pauza);
@@ -58,7 +58,7 @@ export default function ValidateForm() {
 
   // Fetch captcha question din backend
   useEffect(() => {
-    fetch(`/api/captcha-question?signal_number=${signalNo}`)
+    fetch(`https://backend-qrm-production.up.railway.app/api/captcha-question?signal_number=${signalNo}`)
       .then(res => res.json())
       .then(data => setCaptchaQ(data.question || ""))
       .catch(() => setCaptchaQ("Connection error!"));
@@ -79,7 +79,7 @@ export default function ValidateForm() {
       return;
     }
 
-    fetch('/api/validate-wallet', {
+    fetch('https://backend-qrm-production.up.railway.app/api/validate-wallet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
