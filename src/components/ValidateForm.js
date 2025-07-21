@@ -20,7 +20,7 @@ function toMorse(word) {
 
 // Calculează ziua de protocol relativ la start (1 august 2025)
 function getUTCDayOfProtocol() {
-  const PROTOCOL_START = Date.UTC(2025, 7, 1, 0, 0, 0); // 1 august 2025
+  const PROTOCOL_START = Date.UTC(2025, 6, 21, 0, 0, 0); // 21 iulie 2025
   const now = Date.now();
   const diff = now - PROTOCOL_START;
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
