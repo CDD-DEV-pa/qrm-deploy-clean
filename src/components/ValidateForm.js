@@ -176,6 +176,7 @@ export default function ValidateForm() {
             placeholder="Wallet ID"
             style={{ marginBottom: 10, padding: 8, width: 310 }}
             required
+            onFocus={e => e.target.select()}
           />
           <input
             type="text"
