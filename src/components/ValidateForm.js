@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 
-// Morse table pentru transformare locală (opțional)
 const morseTable = {
   "A": ".-", "B": "-...", "C": "-.-.", "D": "-..", "E": ".", "F": "..-.",
   "G": "--.", "H": "....", "I": "..", "J": ".---", "K": "-.-", "L": ".-..",
@@ -18,54 +17,58 @@ function toMorse(word) {
     .join("   ");
 }
 
-// Calculează ziua de protocol relativ la start (1 august 2025)
-function getUTCDayOfProtocol() {
-  const PROTOCOL_START = Date.UTC(2025, 7, 1, 0, 0, 0);
-  const now = Date.now();
-  const diff = now - PROTOCOL_START;
-  console.log("[DEBUG] PROTOCOL_START:", new Date(PROTOCOL_START).toUTCString(), "Now:", new Date(now).toUTCString(), "Diff (zile):", Math.floor(diff / (1000 * 60 * 60 * 24)));
-  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
-}
-
 export default function ValidateForm() {
   const year = new Date().getUTCFullYear();
-  const protocolDay = getUTCDayOfProtocol();
+  const [protocolDay, setProtocolDay] = useState(null);
   const [semnal, setSemnal] = useState("");
-  const [pauza, setPauza] = useState(false);
   const [loadingSemnal, setLoadingSemnal] = useState(true);
   const [decoded, setDecoded] = useState("");
   const [wallet, setWallet] = useState("");
   const [captcha, setCaptcha] = useState("");
   const [captchaQ, setCaptchaQ] = useState("");
-  const [signalNo, setSignalNo] = useState(protocolDay + 1);
+  const [signalNo, setSignalNo] = useState(null);
   const [feedback, setFeedback] = useState("");
+  const [pauza, setPauza] = useState(false);
 
-  // Fetch semnalul de zi
+  // 1. Fetch ziua protocolului din backend
   useEffect(() => {
+    const url = `${process.env.REACT_APP_API_URL}/api/current-protocol-day`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => setProtocolDay(data.protocol_day))
+      .catch(() => setProtocolDay("error"));
+  }, []);
+
+  // 2. Fetch semnalul curent (primul liber) și status pauză
+  useEffect(() => {
+    if (!protocolDay || protocolDay === "error") return;
     setLoadingSemnal(true);
-    fetch(`https://backend-qrm-production.up.railway.app/api/semnal-zi?protocol_day=${protocolDay + 1}`)
+    fetch(`${process.env.REACT_APP_API_URL}/api/semnal-zi?protocol_day=${protocolDay}`)
       .then(res => res.json())
       .then(data => {
-        setPauza(!!data.pauza);
         setSemnal(data.semnal || "");
+        setSignalNo(data.signal_number || null);
+        setPauza(!!data.pauza);
       })
       .catch(() => {
-        setPauza(true);
         setSemnal("");
+        setSignalNo(null);
+        setPauza(true);
       })
       .finally(() => setLoadingSemnal(false));
-  }, [protocolDay]);
+  }, [protocolDay, feedback]);
 
-  // Fetch captcha question din backend
+  // 3. Fetch captcha pentru signalNo
   useEffect(() => {
-    fetch(`https://backend-qrm-production.up.railway.app/api/captcha-question?signal_number=${signalNo}`)
+    if (!signalNo) return;
+    fetch(`${process.env.REACT_APP_API_URL}/api/captcha-question?signal_number=${signalNo}`)
       .then(res => res.json())
       .then(data => setCaptchaQ(data.question || ""))
       .catch(() => setCaptchaQ("Connection error!"));
   }, [signalNo]);
 
-  // Trimite validare la backend
   const handleValidate = () => {
+    setFeedback("");
     if (!wallet.trim()) {
       setFeedback("⚠️ Enter your wallet ID!");
       return;
@@ -78,14 +81,18 @@ export default function ValidateForm() {
       setFeedback("❌ Please answer the captcha!");
       return;
     }
+    if (!signalNo || pauza) {
+      setFeedback("⛔ Semnal indisponibil acum!");
+      return;
+    }
 
-    fetch('https://backend-qrm-production.up.railway.app/api/validate-wallet', {
+    fetch(`${process.env.REACT_APP_API_URL}/api/validate-wallet`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         wallet: wallet.trim(),
         captcha: captcha.trim(),
-        protocol_day: protocolDay + 1,
+        protocol_day: protocolDay,
         year,
         signal_number: signalNo,
         decoded: decoded.trim()
@@ -94,16 +101,39 @@ export default function ValidateForm() {
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setFeedback(`✅ Success! Signal ID: ${data.identificator}`);
+          setFeedback(`✅ Ai validat semnalul #${signalNo}. ID: ${data.identificator}`);
           setDecoded("");
           setCaptcha("");
-          setSignalNo(signalNo + 5);
+          // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
         } else {
           setFeedback(`⛔ ${data.message}`);
         }
       })
       .catch(() => setFeedback("⛔ Network error or server unavailable."));
   };
+
+  // Debug/error states
+  if (protocolDay === null)
+    return (
+      <div style={{color:'yellow', fontWeight: 'bold', padding: 20}}>
+        Se încarcă ziua protocolului...<br/>
+        <small>
+          (Verifică dacă backendul rulează și dacă API URL e corect.<br/>
+          API URL: {process.env.REACT_APP_API_URL}/api/current-protocol-day)
+        </small>
+      </div>
+    );
+
+  if (protocolDay === "error")
+    return (
+      <div style={{color:'red', fontWeight: 'bold', padding: 20}}>
+        Eroare: ziua protocolului nu a putut fi încărcată din backend.<br/>
+        <small>
+          Verifică dacă backendul rulează și dacă API URL e corect.<br/>
+          API URL: {process.env.REACT_APP_API_URL}/api/current-protocol-day
+        </small>
+      </div>
+    );
 
   return (
     <div style={{
@@ -117,24 +147,16 @@ export default function ValidateForm() {
     }}>
       <h1>QRM Signal Validation</h1>
       {loadingSemnal ? (
-        <div style={{ margin: 40, fontSize: 24 }}>Loading signal...</div>
+        <div>Loading signal...</div>
       ) : pauza ? (
-        <div style={{
-          fontSize: 28,
-          margin: '44px 0',
-          background: '#2c233a',
-          padding: '20px 44px',
-          borderRadius: 12,
-          border: '2px solid #644'
-        }}>
-          <b>Astăzi este pauză.</b><br />
-          Nu se emit semnale Morse.<br />
-          Revino mâine!
+        <div style={{fontSize:22, color:'#FF0', fontWeight:700}}>
+          Nu este semnal astăzi.<br/>
+          <span style={{fontSize:14}}>({feedback || "Zi de pauză sau semnale epuizate"})</span>
         </div>
       ) : (
         <>
           <div style={{ fontSize: 22, margin: '20px 0' }}>
-            <strong>Today's signal (Protocol Day {protocolDay + 1}) – Morse:</strong>
+            <strong>Semnalul zilei (Protocol Day {protocolDay})</strong>
             <div style={{
               fontSize: 34,
               margin: '16px 0',
@@ -148,16 +170,11 @@ export default function ValidateForm() {
             }}>
               {toMorse(semnal)}
             </div>
+            <div style={{fontSize:14, marginTop: 10}}>
+              <b>Signal number:</b> {signalNo}
+            </div>
           </div>
-          <div style={{ fontSize: 18, marginBottom: 14 }}>
-            <b>Signal number for the day:</b> {signalNo}
-            <button
-              style={{ marginLeft: 10, padding: '3px 12px', borderRadius: 6, border: '1px solid #888', background: '#282846', color: '#fff' }}
-              onClick={() => setSignalNo(Math.max(1, signalNo - 5))}>-5</button>
-            <button
-              style={{ marginLeft: 6, padding: '3px 12px', borderRadius: 6, border: '1px solid #888', background: '#282846', color: '#fff' }}
-              onClick={() => setSignalNo(signalNo + 5)}>+5</button>
-          </div>
+
           <fieldset>
             <legend>Captcha</legend>
             <p><strong>Întrebare:</strong> {captchaQ}</p>
@@ -169,6 +186,7 @@ export default function ValidateForm() {
               style={{ marginBottom: 12, padding: 8, width: 280 }}
             />
           </fieldset>
+
           <input
             type="text"
             value={wallet}
@@ -177,6 +195,7 @@ export default function ValidateForm() {
             style={{ marginBottom: 10, padding: 8, width: 310 }}
             required
           />
+
           <input
             type="text"
             value={decoded}
@@ -185,13 +204,16 @@ export default function ValidateForm() {
             style={{ marginBottom: 12, padding: 8, width: 280 }}
             required
           />
+
           <button
             onClick={handleValidate}
-            style={{ padding: '10px 32px', background: '#711fd2', color: '#fff', border: 'none', borderRadius: 8, fontSize: 18, fontWeight: 'bold', cursor: 'pointer' }}>
+            style={{ padding: '10px 32px', background: '#711fd2', color: '#fff', border: 'none', borderRadius: 8 }}
+          >
             Validate signal
           </button>
+
           {feedback && (
-            <div style={{ marginTop: 20, padding: 10, border: '1px solid #ccc' }}>
+            <div style={{ marginTop: 20, padding: 10, border: '1px solid #ccc', maxWidth:420 }}>
               {feedback}
             </div>
           )}
