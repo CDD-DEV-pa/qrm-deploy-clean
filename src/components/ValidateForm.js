@@ -31,86 +31,87 @@ export default function ValidateForm() {
   const [pauza, setPauza] = useState(false);
 
   // 1. Fetch ziua protocolului din backend
-  useEffect(() => {
-    const url = `${process.env.REACT_APP_API_URL}/api/current-protocol-day`;
-    fetch(url)
-      .then(res => res.json())
-      .then(data => setProtocolDay(data.protocol_day))
-      .catch(() => setProtocolDay("error"));
-  }, []);
+useEffect(() => {
+  const url = `${process.env.REACT_APP_API_BASE}/api/current-protocol-day`;
+  fetch(url)
+    .then(res => res.json())
+    .then(data => setProtocolDay(data.protocol_day))
+    .catch(() => setProtocolDay("error"));
+}, []);
 
-  // 2. Fetch semnalul curent (primul liber) și status pauză
-  useEffect(() => {
-    if (!protocolDay || protocolDay === "error") return;
-    setLoadingSemnal(true);
-    fetch(`${process.env.REACT_APP_API_URL}/api/semnal-zi?protocol_day=${protocolDay}`)
-      .then(res => res.json())
-      .then(data => {
-        setSemnal(data.semnal || "");
-        setSignalNo(data.signal_number || null);
-        setPauza(!!data.pauza);
-      })
-      .catch(() => {
-        setSemnal("");
-        setSignalNo(null);
-        setPauza(true);
-      })
-      .finally(() => setLoadingSemnal(false));
-  }, [protocolDay, feedback]);
-
-  // 3. Fetch captcha pentru signalNo
-  useEffect(() => {
-    if (!signalNo) return;
-    fetch(`${process.env.REACT_APP_API_URL}/api/captcha-question?signal_number=${signalNo}`)
-      .then(res => res.json())
-      .then(data => setCaptchaQ(data.question || ""))
-      .catch(() => setCaptchaQ("Connection error!"));
-  }, [signalNo]);
-
-  const handleValidate = () => {
-    setFeedback("");
-    if (!wallet.trim()) {
-      setFeedback("⚠️ Enter your wallet ID!");
-      return;
-    }
-    if (!decoded.trim()) {
-      setFeedback("❌ Write the decoded answer!");
-      return;
-    }
-    if (!captcha.trim()) {
-      setFeedback("❌ Please answer the captcha!");
-      return;
-    }
-    if (!signalNo || pauza) {
-      setFeedback("⛔ Semnal indisponibil acum!");
-      return;
-    }
-
-    fetch(`${process.env.REACT_APP_API_URL}/api/validate-wallet`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet: wallet.trim(),
-        captcha: captcha.trim(),
-        protocol_day: protocolDay,
-        year,
-        signal_number: signalNo,
-        decoded: decoded.trim()
-      })
+// 2. Fetch semnalul curent (primul liber) și status pauză
+useEffect(() => {
+  if (!protocolDay || protocolDay === "error") return;
+  setLoadingSemnal(true);
+  fetch(`${process.env.REACT_APP_API_BASE}/api/semnal-zi?protocol_day=${protocolDay}`)
+    .then(res => res.json())
+    .then(data => {
+      setSemnal(data.semnal || "");
+      setSignalNo(data.signal_number || null);
+      setPauza(!!data.pauza);
     })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setFeedback(`✅ Ai validat semnalul #${signalNo}. ID: ${data.identificator}`);
-          setDecoded("");
-          setCaptcha("");
-          // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
-        } else {
-          setFeedback(`⛔ ${data.message}`);
-        }
-      })
-      .catch(() => setFeedback("⛔ Network error or server unavailable."));
-  };
+    .catch(() => {
+      setSemnal("");
+      setSignalNo(null);
+      setPauza(true);
+    })
+    .finally(() => setLoadingSemnal(false));
+}, [protocolDay, feedback]);
+
+// 3. Fetch captcha pentru signalNo
+useEffect(() => {
+  if (!signalNo) return;
+  fetch(`${process.env.REACT_APP_API_BASE}/api/captcha-question?signal_number=${signalNo}`)
+    .then(res => res.json())
+    .then(data => setCaptchaQ(data.question || ""))
+    .catch(() => setCaptchaQ("Connection error!"));
+}, [signalNo]);
+
+// 4. Funcție de validare semnal
+const handleValidate = () => {
+  setFeedback("");
+  if (!wallet.trim()) {
+    setFeedback("⚠️ Enter your wallet ID!");
+    return;
+  }
+  if (!decoded.trim()) {
+    setFeedback("❌ Write the decoded answer!");
+    return;
+  }
+  if (!captcha.trim()) {
+    setFeedback("❌ Please answer the captcha!");
+    return;
+  }
+  if (!signalNo || pauza) {
+    setFeedback("⛔ Semnal indisponibil acum!");
+    return;
+  }
+
+  fetch(`${process.env.REACT_APP_API_BASE}/api/validate-wallet`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      wallet: wallet.trim(),
+      captcha: captcha.trim(),
+      protocol_day: protocolDay,
+      year,
+      signal_number: signalNo,
+      decoded: decoded.trim()
+    })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        setFeedback(`✅ Ai validat semnalul #${signalNo}. ID: ${data.identificator}`);
+        setDecoded("");
+        setCaptcha("");
+        // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
+      } else {
+        setFeedback(`⛔ ${data.message}`);
+      }
+    })
+    .catch(() => setFeedback("⛔ Network error or server unavailable."));
+};
 
   // Debug/error states
   if (protocolDay === null)
