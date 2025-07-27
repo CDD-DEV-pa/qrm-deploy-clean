@@ -32,7 +32,8 @@ export default function ValidateForm() {
 
   // 1. Fetch ziua protocolului din backend
 useEffect(() => {
-  const url = `${process.env.REACT_APP_API_BASE}/api/current-protocol-day`;
+console.log("API_BASE:", process.env.REACT_APP_API_BASE);
+const url = `${process.env.REACT_APP_API_BASE}/api/current-protocol-day`;
   fetch(url)
     .then(res => res.json())
     .then(data => setProtocolDay(data.protocol_day))
