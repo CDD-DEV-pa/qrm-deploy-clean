@@ -26,6 +26,7 @@ export default function ValidateForm() {
   const [wallet, setWallet] = useState("");
   const [captcha, setCaptcha] = useState("");
   const [captchaQ, setCaptchaQ] = useState("");
+  const [captchaIdx, setCaptchaIdx] = useState(null);
   const [signalNo, setSignalNo] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [pauza, setPauza] = useState(false);
@@ -64,8 +65,14 @@ useEffect(() => {
   if (!signalNo) return;
   fetch(`${process.env.REACT_APP_API_BASE}/api/captcha-question?signal_number=${signalNo}`)
     .then(res => res.json())
-    .then(data => setCaptchaQ(data.question || ""))
-    .catch(() => setCaptchaQ("Connection error!"));
+    .then(data => {
+      setCaptchaQ(data.question || "");
+      setCaptchaIdx(data.idx); // aici setezi și idx-ul
+    })
+    .catch(() => {
+      setCaptchaQ("Connection error!");
+      setCaptchaIdx(null); // dacă e eroare, idx null
+    });
 }, [signalNo]);
 
 // 4. Funcție de validare semnal
@@ -92,13 +99,15 @@ const handleValidate = () => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      wallet: wallet.trim(),
-      captcha: captcha.trim(),
-      protocol_day: protocolDay,
-      year,
-      signal_number: signalNo,
-      decoded: decoded.trim()
-    })
+  wallet: wallet.trim(),
+  captcha: captcha.trim(),
+  protocol_day: protocolDay,
+  year,
+  signal_number: signalNo,
+  decoded: decoded.trim(),
+  idx: captchaIdx // <-- adaugi aici
+})
+
   })
     .then(res => res.json())
     .then(data => {
