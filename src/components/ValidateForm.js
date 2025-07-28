@@ -91,7 +91,7 @@ const handleValidate = () => {
     return;
   }
   if (!signalNo || pauza) {
-    setFeedback("⛔ Semnal indisponibil acum!");
+    setFeedback("⛔ Signal not available now!");
     return;
   }
 
@@ -112,7 +112,7 @@ const handleValidate = () => {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        setFeedback(`✅ Ai validat semnalul #${signalNo}. ID: ${data.identificator}`);
+        ssetFeedback(`✅ You have validated signal #${signalNo}. ID: ${data.identificator}`);
         setDecoded("");
         setCaptcha("");
         // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
@@ -161,13 +161,13 @@ const handleValidate = () => {
         <div>Loading signal...</div>
       ) : pauza ? (
         <div style={{fontSize:22, color:'#FF0', fontWeight:700}}>
-          Nu este semnal astăzi.<br/>
-          <span style={{fontSize:14}}>({feedback || "Zi de pauză sau semnale epuizate"})</span>
+          No signal today.<br/>
+          <span style={{fontSize:14}}>({feedback || "Pause day or all signals used."})</span>
         </div>
       ) : (
         <>
           <div style={{ fontSize: 22, margin: '20px 0' }}>
-            <strong>Semnalul zilei (Protocol Day {protocolDay})</strong>
+            <strong>Day signal (Protocol Day {protocolDay})</strong>
             <div style={{
               fontSize: 34,
               margin: '16px 0',
@@ -188,12 +188,12 @@ const handleValidate = () => {
 
           <fieldset>
             <legend>Captcha</legend>
-            <p><strong>Întrebare:</strong> {captchaQ}</p>
+            <p><strong>Question:</strong> {captchaQ}</p>
             <input
               type="text"
               value={captcha}
               onChange={e => setCaptcha(e.target.value)}
-              placeholder="Răspuns captcha"
+              placeholder="Captcha answer"
               style={{ marginBottom: 12, padding: 8, width: 280 }}
             />
           </fieldset>
@@ -211,7 +211,7 @@ const handleValidate = () => {
             type="text"
             value={decoded}
             onChange={e => setDecoded(e.target.value)}
-            placeholder="Cuvânt decodat"
+            placeholder="Decoded word"
             style={{ marginBottom: 12, padding: 8, width: 280 }}
             required
           />
