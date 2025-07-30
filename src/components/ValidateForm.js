@@ -112,7 +112,7 @@ const handleValidate = () => {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        ssetFeedback(`✅ You have validated signal #${signalNo}. ID: ${data.identificator}`);
+        setFeedback(`✅ You have validated signal #${signalNo}. ID: ${data.identificator}`);
         setDecoded("");
         setCaptcha("");
         // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
