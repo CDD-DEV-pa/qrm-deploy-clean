@@ -18,6 +18,9 @@ function toMorse(word) {
 }
 
 export default function ValidateForm() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = (params.get('mode') || 'wallet').toLowerCase();
+  const isAnon = mode === 'anon';
   const year = new Date().getUTCFullYear();
   const [protocolDay, setProtocolDay] = useState(null);
   const [semnal, setSemnal] = useState("");
@@ -78,7 +81,9 @@ useEffect(() => {
 // 4. Funcție de validare semnal
 const handleValidate = () => {
   setFeedback("");
-  if (!wallet.trim()) {
+
+  // Wallet se cere doar în modul wallet
+  if (!isAnon && !wallet.trim()) {
     setFeedback("⚠️ Enter your wallet ID!");
     return;
   }
@@ -95,27 +100,35 @@ const handleValidate = () => {
     return;
   }
 
-  fetch(`${process.env.REACT_APP_API_BASE}/api/validate-wallet`, {
+  const url = `${process.env.REACT_APP_API_BASE}${isAnon ? '/api/validate-anon' : '/api/validate-wallet'}`;
+  const payload = {
+    captcha: captcha.trim(),
+    protocol_day: protocolDay,
+    year,
+    signal_number: signalNo,
+    decoded: decoded.trim(),
+    idx: captchaIdx
+  };
+  if (!isAnon) payload.wallet = wallet.trim();
+
+  fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-  wallet: wallet.trim(),
-  captcha: captcha.trim(),
-  protocol_day: protocolDay,
-  year,
-  signal_number: signalNo,
-  decoded: decoded.trim(),
-  idx: captchaIdx // <-- adaugi aici
-})
-
+    body: JSON.stringify(payload)
   })
     .then(res => res.json())
     .then(data => {
-      if (data.success) {
-        setFeedback(`✅ You have validated signal #${signalNo}. ID: ${data.identificator}`);
+      if (data.success || data.status === "ok") {
+        setFeedback(
+          isAnon
+            ? `✅ You validated anonymously signal #${signalNo}. (no reward)`
+            : `✅ You have validated signal #${signalNo}. ID: ${data.identificator}`
+        );
         setDecoded("");
         setCaptcha("");
         // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
+      } else if (data.status === "already_validated_today") {
+        setFeedback("⛔ You already validated anonymously today. Try again tomorrow (UTC).");
       } else {
         setFeedback(`⛔ ${data.message}`);
       }
