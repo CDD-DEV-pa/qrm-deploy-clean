@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const morseTable = {
   "A": ".-", "B": "-...", "C": "-.-.", "D": "-..", "E": ".", "F": "..-.",
@@ -35,8 +35,14 @@ export default function ValidateForm() {
   const [protocolInfo, setProtocolInfo] = useState({});
   const [numericSignal, setNumericSignal] = useState("");
   const [morseGroups, setMorseGroups] = useState([]);
+  const [activePulseIndex, setActivePulseIndex] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [pauza, setPauza] = useState(false);
+  const playbackTimersRef = useRef([]);
+
+  useEffect(() => () => {
+    playbackTimersRef.current.forEach(clearTimeout);
+  }, []);
 
   // 1. Fetch ziua protocolului din backend
 useEffect(() => {
@@ -178,34 +184,64 @@ const playAudioSignal = () => {
     return;
   }
 
+  playbackTimersRef.current.forEach(clearTimeout);
+  playbackTimersRef.current = [];
+  setActivePulseIndex(null);
+
   const audioContext = new AudioContextClass();
-  const unit = 0.12;
+  const unit = 0.095;
   let cursor = audioContext.currentTime + 0.08;
+  let pulseIndex = 0;
 
   morseGroups.forEach((group, groupIndex) => {
     group.split("").forEach((symbol, symbolIndex) => {
       const duration = symbol === "-" ? unit * 3 : unit;
       const oscillator = audioContext.createOscillator();
+      const filter = audioContext.createBiquadFilter();
       const gain = audioContext.createGain();
+      const startDelay = Math.max(0, (cursor - audioContext.currentTime) * 1000);
+      const endDelay = startDelay + duration * 1000;
+      const currentPulse = pulseIndex;
 
-      oscillator.frequency.value = 640;
-      oscillator.type = "sine";
+      oscillator.frequency.value = 700;
+      oscillator.type = "triangle";
+      filter.type = "bandpass";
+      filter.frequency.value = 700;
+      filter.Q.value = 8;
       gain.gain.setValueAtTime(0.0001, cursor);
-      gain.gain.exponentialRampToValueAtTime(0.22, cursor + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.32, cursor + 0.012);
       gain.gain.exponentialRampToValueAtTime(0.0001, cursor + duration);
 
-      oscillator.connect(gain);
+      oscillator.connect(filter);
+      filter.connect(gain);
       gain.connect(audioContext.destination);
       oscillator.start(cursor);
       oscillator.stop(cursor + duration + 0.02);
 
+      playbackTimersRef.current.push(setTimeout(() => {
+        setActivePulseIndex(currentPulse);
+      }, startDelay));
+      playbackTimersRef.current.push(setTimeout(() => {
+        setActivePulseIndex(null);
+      }, endDelay));
+
       cursor += duration;
+      pulseIndex += 1;
       if (symbolIndex < group.length - 1) cursor += unit;
     });
 
     if (groupIndex < morseGroups.length - 1) cursor += unit * 3;
   });
 };
+
+const signalPulses = morseGroups.flatMap((group, groupIndex) =>
+  group.split("").map((symbol, symbolIndex) => ({
+    symbol,
+    key: `${groupIndex}-${symbolIndex}`,
+    isDash: symbol === "-",
+    gapAfter: symbolIndex === group.length - 1 && groupIndex < morseGroups.length - 1
+  }))
+);
 
   // Debug/error states
   if (protocolDay === null)
@@ -270,6 +306,47 @@ const playAudioSignal = () => {
               wordBreak: 'break-word'
             }}>
               {numericSignal || toMorse(semnal)}
+            </div>
+            <div style={{
+              width: 360,
+              maxWidth: '90vw',
+              minHeight: 58,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              margin: '0 auto 12px',
+              padding: '8px 10px',
+              background: '#0b0b12',
+              border: '1px solid #2f2f3a',
+              borderRadius: 8,
+              overflow: 'hidden'
+            }}>
+              <div style={{ height: 2, flex: 1, background: '#374151' }} />
+              {signalPulses.map((pulse, index) => (
+                <React.Fragment key={pulse.key}>
+                  <div
+                    title={pulse.isDash ? 'Long pulse' : 'Short pulse'}
+                    style={{
+                      width: pulse.isDash ? 44 : 18,
+                      height: pulse.isDash ? 34 : 18,
+                      borderTop: `3px solid ${activePulseIndex === index ? '#facc15' : '#22d3ee'}`,
+                      borderLeft: `3px solid ${activePulseIndex === index ? '#facc15' : '#22d3ee'}`,
+                      borderRight: `3px solid ${activePulseIndex === index ? '#facc15' : '#22d3ee'}`,
+                      borderBottom: '3px solid transparent',
+                      borderRadius: '8px 8px 2px 2px',
+                      opacity: activePulseIndex === index ? 1 : 0.55,
+                      transform: activePulseIndex === index ? 'translateY(-3px)' : 'translateY(0)',
+                      transition: 'opacity 90ms ease, transform 90ms ease, border-color 90ms ease',
+                      flex: '0 0 auto'
+                    }}
+                  />
+                  {pulse.gapAfter && (
+                    <div style={{ width: 18, height: 2, background: '#374151', flex: '0 0 auto' }} />
+                  )}
+                </React.Fragment>
+              ))}
+              <div style={{ height: 2, flex: 1, background: '#374151' }} />
             </div>
             <button
               type="button"
