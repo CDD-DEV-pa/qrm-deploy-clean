@@ -40,8 +40,11 @@ export default function ValidateForm() {
   const [waveTime, setWaveTime] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [pauza, setPauza] = useState(false);
+  const [pauseVideoMuted, setPauseVideoMuted] = useState(false);
+  const [pauseSoundBlocked, setPauseSoundBlocked] = useState(false);
   const playbackTimersRef = useRef([]);
   const animationFrameRef = useRef(null);
+  const pauseVideoRef = useRef(null);
 
   useEffect(() => () => {
     playbackTimersRef.current.forEach(clearTimeout);
@@ -61,6 +64,51 @@ export default function ValidateForm() {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [pauza, morseGroups.length]);
+
+  useEffect(() => {
+    if (!pauza || !pauseVideoRef.current) return undefined;
+
+    const video = pauseVideoRef.current;
+    const savedPreference = window.localStorage.getItem('qrm_pause_video_sound');
+    const shouldMute = savedPreference === 'muted';
+
+    video.volume = 0.55;
+    video.muted = shouldMute;
+    setPauseVideoMuted(shouldMute);
+    setPauseSoundBlocked(false);
+
+    const playAttempt = video.play();
+
+    if (playAttempt && typeof playAttempt.catch === 'function') {
+      playAttempt.catch(() => {
+        video.muted = true;
+        setPauseVideoMuted(true);
+        setPauseSoundBlocked(true);
+        video.play().catch(() => {});
+      });
+    }
+
+    return () => {
+      video.pause();
+    };
+  }, [pauza]);
+
+  const togglePauseSound = () => {
+    const video = pauseVideoRef.current;
+    if (!video) return;
+
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    video.volume = 0.55;
+    setPauseVideoMuted(nextMuted);
+    setPauseSoundBlocked(false);
+    window.localStorage.setItem('qrm_pause_video_sound', nextMuted ? 'muted' : 'sound');
+    video.play().catch(() => {
+      video.muted = true;
+      setPauseVideoMuted(true);
+      setPauseSoundBlocked(true);
+    });
+  };
 
   // 1. Fetch ziua protocolului din backend
 useEffect(() => {
@@ -369,9 +417,54 @@ const renderNumericSignal = () => {
       {loadingSemnal ? (
         <div>Loading signal...</div>
       ) : pauza ? (
-        <div style={{fontSize:22, color:'#FF0', fontWeight:700}}>
-          No signal today.<br/>
-          <span style={{fontSize:14}}>({feedback || "Pause day or all signals used."})</span>
+        <div style={{
+          width: 'min(94vw, 920px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 14,
+          padding: '12px 0'
+        }}>
+          <video
+            ref={pauseVideoRef}
+            autoPlay
+            loop
+            playsInline
+            muted={pauseVideoMuted}
+            preload="auto"
+            aria-label="QRM pause day story"
+            style={{
+              width: '100%',
+              maxHeight: '78vh',
+              objectFit: 'contain',
+              background: '#050509',
+              border: '1px solid rgba(255,255,255,0.16)',
+              borderRadius: 10,
+              boxShadow: '0 18px 60px rgba(0,0,0,0.45)'
+            }}
+          >
+            <source src="/pause/qrm-pause-mobile.mp4" media="(max-width: 700px)" type="video/mp4" />
+            <source src="/pause/qrm-pause-desktop.mp4" type="video/mp4" />
+          </video>
+
+          <button
+            type="button"
+            onClick={togglePauseSound}
+            style={{
+              padding: '9px 22px',
+              background: pauseVideoMuted ? '#2563eb' : '#222',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.22)',
+              borderRadius: 8,
+              cursor: 'pointer'
+            }}
+          >
+            {pauseVideoMuted ? 'Play sound' : 'Mute'}
+          </button>
+
+          <div style={{fontSize:14, color:'#cbd5e1', textAlign:'center'}}>
+            {pauseSoundBlocked ? 'Browser blocked autoplay sound. Press Play sound.' : (feedback || 'Pause day. The signal resumes on the next active day.')}
+          </div>
         </div>
       ) : (
         <>
