@@ -21,16 +21,20 @@ export default function ValidateForm() {
   const params = new URLSearchParams(window.location.search);
   const mode = (params.get('mode') || 'wallet').toLowerCase();
   const isAnon = mode === 'anon';
-  const year = new Date().getUTCFullYear();
   const [protocolDay, setProtocolDay] = useState(null);
   const [semnal, setSemnal] = useState("");
   const [loadingSemnal, setLoadingSemnal] = useState(true);
   const [decoded, setDecoded] = useState("");
   const [wallet, setWallet] = useState("");
-  const [captcha, setCaptcha] = useState("");
-  const [captchaQ, setCaptchaQ] = useState("");
-  const [captchaIdx, setCaptchaIdx] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaStatement, setCaptchaStatement] = useState("");
+  const [captchaOptions, setCaptchaOptions] = useState([]);
+  const [captchaChallengeId, setCaptchaChallengeId] = useState("");
+  const [captchaRefresh, setCaptchaRefresh] = useState(0);
   const [signalNo, setSignalNo] = useState(null);
+  const [protocolInfo, setProtocolInfo] = useState({});
+  const [numericSignal, setNumericSignal] = useState("");
+  const [morseGroups, setMorseGroups] = useState([]);
   const [feedback, setFeedback] = useState("");
   const [pauza, setPauza] = useState(false);
 
@@ -40,7 +44,10 @@ console.log("API_BASE:", process.env.REACT_APP_API_BASE);
 const url = `${process.env.REACT_APP_API_BASE}/api/current-protocol-day`;
   fetch(url)
     .then(res => res.json())
-    .then(data => setProtocolDay(data.protocol_day))
+    .then(data => {
+      setProtocolDay(data.protocol_day);
+      setProtocolInfo(data);
+    })
     .catch(() => setProtocolDay("error"));
 }, []);
 
@@ -53,30 +60,47 @@ useEffect(() => {
     .then(data => {
       setSemnal(data.semnal || "");
       setSignalNo(data.signal_number || null);
+      setNumericSignal(data.numeric_signal || "");
+      setMorseGroups(Array.isArray(data.morse_groups) ? data.morse_groups : []);
+      setProtocolInfo(current => ({ ...current, ...data }));
       setPauza(!!data.pauza);
     })
     .catch(() => {
       setSemnal("");
       setSignalNo(null);
+      setNumericSignal("");
+      setMorseGroups([]);
       setPauza(true);
     })
     .finally(() => setLoadingSemnal(false));
 }, [protocolDay, feedback]);
 
-// 3. Fetch captcha pentru signalNo
+// 3. Fetch CAPTCHA Clandestin pentru signalNo
 useEffect(() => {
   if (!signalNo) return;
   fetch(`${process.env.REACT_APP_API_BASE}/api/captcha-question?signal_number=${signalNo}`)
     .then(res => res.json())
     .then(data => {
-      setCaptchaQ(data.question || "");
-      setCaptchaIdx(data.idx); // aici setezi și idx-ul
+      if (data.blocked) {
+        setCaptchaStatement("Too many incorrect captcha responses. Please try again later.");
+        setCaptchaOptions([]);
+        setCaptchaChallengeId("");
+        setCaptchaAnswer("");
+        return;
+      }
+
+      setCaptchaStatement(data.statement || "");
+      setCaptchaOptions(Array.isArray(data.options) ? data.options : []);
+      setCaptchaChallengeId(data.challenge_id || "");
+      setCaptchaAnswer("");
     })
     .catch(() => {
-      setCaptchaQ("Connection error!");
-      setCaptchaIdx(null); // dacă e eroare, idx null
+      setCaptchaStatement("Connection error!");
+      setCaptchaOptions([]);
+      setCaptchaChallengeId("");
+      setCaptchaAnswer("");
     });
-}, [signalNo]);
+}, [signalNo, captchaRefresh]);
 
 // 4. Funcție de validare semnal
 const handleValidate = () => {
@@ -91,7 +115,7 @@ const handleValidate = () => {
     setFeedback("❌ Write the decoded answer!");
     return;
   }
-  if (!captcha.trim()) {
+  if (!captchaChallengeId || !captchaAnswer) {
     setFeedback("❌ Please answer the captcha!");
     return;
   }
@@ -102,12 +126,9 @@ const handleValidate = () => {
 
   const url = `${process.env.REACT_APP_API_BASE}${isAnon ? '/api/validate-anon' : '/api/validate-wallet'}`;
   const payload = {
-    captcha: captcha.trim(),
-    protocol_day: protocolDay,
-    year,
-    signal_number: signalNo,
-    decoded: decoded.trim(),
-    idx: captchaIdx
+    challenge_id: captchaChallengeId,
+    captcha_answer: captchaAnswer,
+    decoded: decoded.trim()
   };
   if (!isAnon) payload.wallet = wallet.trim();
 
@@ -125,15 +146,65 @@ const handleValidate = () => {
             : `✅ You have validated signal #${signalNo}. ID: ${data.identificator}`
         );
         setDecoded("");
-        setCaptcha("");
+        setCaptchaAnswer("");
+        setCaptchaRefresh(value => value + 1);
         // Se face refetch automat la semnal, captcha și status, din useEffect ([feedback])
       } else if (data.status === "already_validated_today") {
         setFeedback("⛔ You already validated anonymously today. Try again tomorrow (UTC).");
       } else {
-        setFeedback(`⛔ ${data.message}`);
+        const remaining = data.captcha && typeof data.captcha.remaining === 'number'
+          ? ` (${data.captcha.remaining} attempts left)`
+          : "";
+        setFeedback(`⛔ ${data.message}${remaining}`);
+
+        if (data.captcha && (data.captcha.reason === 'incorrect' || data.captcha.reason === 'expired')) {
+          setCaptchaAnswer("");
+          setCaptchaRefresh(value => value + 1);
+        }
       }
     })
     .catch(() => setFeedback("⛔ Network error or server unavailable."));
+};
+
+const playAudioSignal = () => {
+  if (!morseGroups.length) {
+    setFeedback("⛔ Audio signal is not available.");
+    return;
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    setFeedback("⛔ Audio is not supported in this browser.");
+    return;
+  }
+
+  const audioContext = new AudioContextClass();
+  const unit = 0.12;
+  let cursor = audioContext.currentTime + 0.08;
+
+  morseGroups.forEach((group, groupIndex) => {
+    group.split("").forEach((symbol, symbolIndex) => {
+      const duration = symbol === "-" ? unit * 3 : unit;
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      oscillator.frequency.value = 640;
+      oscillator.type = "sine";
+      gain.gain.setValueAtTime(0.0001, cursor);
+      gain.gain.exponentialRampToValueAtTime(0.22, cursor + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, cursor + duration);
+
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(cursor);
+      oscillator.stop(cursor + duration + 0.02);
+
+      cursor += duration;
+      if (symbolIndex < group.length - 1) cursor += unit;
+    });
+
+    if (groupIndex < morseGroups.length - 1) cursor += unit * 3;
+  });
 };
 
   // Debug/error states
@@ -143,7 +214,7 @@ const handleValidate = () => {
         Se încarcă ziua protocolului...<br/>
         <small>
           (Verifică dacă backendul rulează și dacă API URL e corect.<br/>
-          API URL: {process.env.REACT_APP_API_URL}/api/current-protocol-day)
+          API URL: {process.env.REACT_APP_API_BASE}/api/current-protocol-day)
         </small>
       </div>
     );
@@ -154,7 +225,7 @@ const handleValidate = () => {
         Eroare: ziua protocolului nu a putut fi încărcată din backend.<br/>
         <small>
           Verifică dacă backendul rulează și dacă API URL e corect.<br/>
-          API URL: {process.env.REACT_APP_API_URL}/api/current-protocol-day
+          API URL: {process.env.REACT_APP_API_BASE}/api/current-protocol-day
         </small>
       </div>
     );
@@ -180,35 +251,70 @@ const handleValidate = () => {
       ) : (
         <>
           <div style={{ fontSize: 22, margin: '20px 0' }}>
-            <strong>Day signal (Protocol Day {protocolDay})</strong>
+            <strong>
+              Protocol Year {protocolInfo.protocol_year || 1}
+              {protocolInfo.active_day ? ` — Active Day ${protocolInfo.active_day}` : ` — Protocol Day ${protocolDay}`}
+            </strong>
             <div style={{
-              fontSize: 34,
+              fontSize: 30,
               margin: '16px 0',
               background: '#111',
-              padding: '10px 40px',
+              padding: '14px 28px',
               borderRadius: 12,
               letterSpacing: 8,
               border: '2px solid #333',
               display: 'flex',
-              alignItems: 'center'
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 54,
+              wordBreak: 'break-word'
             }}>
-              {toMorse(semnal)}
+              {numericSignal || toMorse(semnal)}
             </div>
+            <button
+              type="button"
+              onClick={playAudioSignal}
+              disabled={!morseGroups.length}
+              style={{
+                padding: '9px 22px',
+                background: morseGroups.length ? '#2563eb' : '#333',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                cursor: morseGroups.length ? 'pointer' : 'not-allowed',
+                marginBottom: 10
+              }}
+            >
+              Play audio signal
+            </button>
             <div style={{fontSize:14, marginTop: 10}}>
               <b>Signal number:</b> {signalNo}
+              {protocolInfo.daily_limit ? ` / ${protocolInfo.daily_limit}` : ""}
             </div>
           </div>
 
           <fieldset>
             <legend>Captcha</legend>
-            <p><strong>Question:</strong> {captchaQ}</p>
-            <input
-              type="text"
-              value={captcha}
-              onChange={e => setCaptcha(e.target.value)}
-              placeholder="Captcha answer"
-              style={{ marginBottom: 12, padding: 8, width: 280 }}
-            />
+            <p><strong>Statement:</strong> {captchaStatement}</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 12 }}>
+              {captchaOptions.map(option => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setCaptchaAnswer(option)}
+                  style={{
+                    padding: '8px 22px',
+                    background: captchaAnswer === option ? '#22c55e' : '#222',
+                    color: '#fff',
+                    border: captchaAnswer === option ? '2px solid #86efac' : '2px solid #555',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
           </fieldset>
 
           <input
@@ -246,4 +352,3 @@ const handleValidate = () => {
     </div>
   );
 }
-
