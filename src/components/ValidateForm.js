@@ -36,13 +36,31 @@ export default function ValidateForm() {
   const [numericSignal, setNumericSignal] = useState("");
   const [morseGroups, setMorseGroups] = useState([]);
   const [activePulseIndex, setActivePulseIndex] = useState(null);
+  const [revealedSymbolCount, setRevealedSymbolCount] = useState(0);
+  const [waveTime, setWaveTime] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [pauza, setPauza] = useState(false);
   const playbackTimersRef = useRef([]);
+  const animationFrameRef = useRef(null);
 
   useEffect(() => () => {
     playbackTimersRef.current.forEach(clearTimeout);
   }, []);
+
+  useEffect(() => {
+    if (pauza || !morseGroups.length) return undefined;
+
+    const animate = time => {
+      setWaveTime(time);
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [pauza, morseGroups.length]);
 
   // 1. Fetch ziua protocolului din backend
 useEffect(() => {
@@ -68,6 +86,8 @@ useEffect(() => {
       setSignalNo(data.signal_number || null);
       setNumericSignal(data.numeric_signal || "");
       setMorseGroups(Array.isArray(data.morse_groups) ? data.morse_groups : []);
+      setRevealedSymbolCount(0);
+      setActivePulseIndex(null);
       setProtocolInfo(current => ({ ...current, ...data }));
       setPauza(!!data.pauza);
     })
@@ -187,6 +207,7 @@ const playAudioSignal = () => {
   playbackTimersRef.current.forEach(clearTimeout);
   playbackTimersRef.current = [];
   setActivePulseIndex(null);
+  setRevealedSymbolCount(0);
 
   const audioContext = new AudioContextClass();
   const unit = 0.095;
@@ -220,6 +241,7 @@ const playAudioSignal = () => {
 
       playbackTimersRef.current.push(setTimeout(() => {
         setActivePulseIndex(currentPulse);
+        setRevealedSymbolCount(count => Math.max(count, currentPulse + 1));
       }, startDelay));
       playbackTimersRef.current.push(setTimeout(() => {
         setActivePulseIndex(null);
@@ -242,6 +264,73 @@ const signalPulses = morseGroups.flatMap((group, groupIndex) =>
     gapAfter: symbolIndex === group.length - 1 && groupIndex < morseGroups.length - 1
   }))
 );
+
+const numericGroups = morseGroups.map(group =>
+  group.replace(/\./g, "1").replace(/-/g, "2")
+);
+
+const buildWaveformPath = () => {
+  const baseline = 44;
+  const start = 8;
+  const end = 340;
+  const step = 7;
+  let path = "";
+  let segmentX = start;
+  const segments = [];
+
+  signalPulses.forEach(pulse => {
+    const width = pulse.isDash ? 42 : 18;
+    const height = pulse.isDash ? 12 : 28;
+    const startX = segmentX + 8;
+    const endX = startX + width;
+
+    segments.push({ startX, endX, y: height });
+    segmentX = endX + (pulse.gapAfter ? 24 : 10);
+  });
+
+  for (let x = start; x <= end; x += step) {
+    let y = baseline + Math.sin((x * 0.16) - (waveTime * 0.006)) * 1.25;
+    const active = activePulseIndex === null ? null : segments[activePulseIndex];
+
+    if (active && x >= active.startX && x <= active.endX) {
+      const t = (x - active.startX) / (active.endX - active.startX);
+      const lift = (baseline - active.y) * Math.sin(Math.PI * t);
+      y -= lift;
+    }
+
+    path += path ? ` L ${x.toFixed(1)} ${y.toFixed(2)}` : `M ${x.toFixed(1)} ${y.toFixed(2)}`;
+  }
+
+  return path;
+};
+
+const renderNumericSignal = () => {
+  let symbolIndex = 0;
+
+  return numericGroups.map((group, groupIndex) => (
+    <React.Fragment key={`group-${groupIndex}`}>
+      {groupIndex > 0 && <span style={{ display: 'inline-block', width: 18 }} />}
+      {group.split("").map(symbol => {
+        const currentIndex = symbolIndex;
+        symbolIndex += 1;
+
+        return (
+          <span
+            key={`symbol-${currentIndex}`}
+            style={{
+              opacity: currentIndex < revealedSymbolCount ? (activePulseIndex === currentIndex ? 1 : 0.5) : 0,
+              color: activePulseIndex === currentIndex ? '#facc15' : '#fff',
+              textShadow: activePulseIndex === currentIndex ? '0 0 12px rgba(250, 204, 21, 0.7)' : 'none',
+              transition: 'opacity 90ms ease, color 90ms ease, text-shadow 90ms ease'
+            }}
+          >
+            {symbol}
+          </span>
+        );
+      })}
+    </React.Fragment>
+  ));
+};
 
   // Debug/error states
   if (protocolDay === null)
@@ -305,16 +394,12 @@ const signalPulses = morseGroups.flatMap((group, groupIndex) =>
               minHeight: 54,
               wordBreak: 'break-word'
             }}>
-              {numericSignal || toMorse(semnal)}
+              {morseGroups.length ? renderNumericSignal() : (numericSignal || toMorse(semnal))}
             </div>
             <div style={{
               width: 360,
               maxWidth: '90vw',
               minHeight: 58,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 5,
               margin: '0 auto 12px',
               padding: '8px 10px',
               background: '#0b0b12',
@@ -322,31 +407,21 @@ const signalPulses = morseGroups.flatMap((group, groupIndex) =>
               borderRadius: 8,
               overflow: 'hidden'
             }}>
-              <div style={{ height: 2, flex: 1, background: '#374151' }} />
-              {signalPulses.map((pulse, index) => (
-                <React.Fragment key={pulse.key}>
-                  <div
-                    title={pulse.isDash ? 'Long pulse' : 'Short pulse'}
-                    style={{
-                      width: pulse.isDash ? 44 : 18,
-                      height: pulse.isDash ? 34 : 18,
-                      borderTop: `3px solid ${activePulseIndex === index ? '#facc15' : '#22d3ee'}`,
-                      borderLeft: `3px solid ${activePulseIndex === index ? '#facc15' : '#22d3ee'}`,
-                      borderRight: `3px solid ${activePulseIndex === index ? '#facc15' : '#22d3ee'}`,
-                      borderBottom: '3px solid transparent',
-                      borderRadius: '8px 8px 2px 2px',
-                      opacity: activePulseIndex === index ? 1 : 0.55,
-                      transform: activePulseIndex === index ? 'translateY(-3px)' : 'translateY(0)',
-                      transition: 'opacity 90ms ease, transform 90ms ease, border-color 90ms ease',
-                      flex: '0 0 auto'
-                    }}
-                  />
-                  {pulse.gapAfter && (
-                    <div style={{ width: 18, height: 2, background: '#374151', flex: '0 0 auto' }} />
-                  )}
-                </React.Fragment>
-              ))}
-              <div style={{ height: 2, flex: 1, background: '#374151' }} />
+              <svg
+                viewBox="0 0 348 56"
+                preserveAspectRatio="none"
+                aria-label="Morse pulse line"
+                style={{ display: 'block', width: '100%', height: 56 }}
+              >
+                <path
+                  d={buildWaveformPath()}
+                  fill="none"
+                  stroke="#22d3ee"
+                  strokeWidth="3"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </svg>
             </div>
             <button
               type="button"
