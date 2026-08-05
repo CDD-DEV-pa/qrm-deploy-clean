@@ -112,7 +112,6 @@ export default function ValidateForm() {
 
   // 1. Fetch ziua protocolului din backend
 useEffect(() => {
-console.log("API_BASE:", process.env.REACT_APP_API_BASE);
 const url = `${process.env.REACT_APP_API_BASE}/api/current-protocol-day`;
   fetch(url)
     .then(res => res.json())
@@ -562,14 +561,16 @@ const renderNumericSignal = () => {
             </div>
           </fieldset>
 
-          <input
-            type="text"
-            value={wallet}
-            onChange={e => setWallet(e.target.value)}
-            placeholder="Wallet ID"
-            style={{ marginBottom: 10, padding: 8, width: 310 }}
-            required
-          />
+          {!isAnon && (
+            <input
+              type="text"
+              value={wallet}
+              onChange={e => setWallet(e.target.value)}
+              placeholder="Wallet ID"
+              style={{ marginBottom: 10, padding: 8, width: 310 }}
+              required
+            />
+          )}
 
           <input
             type="text"
