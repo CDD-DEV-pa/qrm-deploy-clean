@@ -355,8 +355,14 @@ const renderNumericSignal = () => {
   let symbolIndex = 0;
 
   return numericGroups.map((group, groupIndex) => (
-    <React.Fragment key={`group-${groupIndex}`}>
-      {groupIndex > 0 && <span style={{ display: 'inline-block', width: 18 }} />}
+    <span
+      key={`group-${groupIndex}`}
+      style={{
+        display: 'inline-block',
+        whiteSpace: 'nowrap',
+        marginRight: groupIndex < numericGroups.length - 1 ? 18 : 0
+      }}
+    >
       {group.split("").map(symbol => {
         const currentIndex = symbolIndex;
         symbolIndex += 1;
@@ -375,7 +381,7 @@ const renderNumericSignal = () => {
           </span>
         );
       })}
-    </React.Fragment>
+    </span>
   ));
 };
 
@@ -473,18 +479,20 @@ const renderNumericSignal = () => {
               {protocolInfo.active_day ? ` — Active Day ${protocolInfo.active_day}` : ` — Protocol Day ${protocolDay}`}
             </strong>
             <div style={{
-              fontSize: 30,
-              margin: '16px 0',
+              fontSize: 'clamp(18px, 6vw, 30px)',
+              margin: '16px auto',
               background: '#111',
-              padding: '14px 28px',
+              padding: '14px clamp(10px, 4vw, 28px)',
+              width: 'min(92vw, 760px)',
               borderRadius: 12,
-              letterSpacing: 8,
+              letterSpacing: 'clamp(3px, 1.5vw, 8px)',
               border: '2px solid #333',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: 'block',
+              textAlign: 'center',
+              maxWidth: '100%',
+              boxSizing: 'border-box',
               minHeight: 54,
-              wordBreak: 'break-word'
+              overflowWrap: 'normal'
             }}>
               {morseGroups.length ? renderNumericSignal() : (numericSignal || toMorse(semnal))}
             </div>
