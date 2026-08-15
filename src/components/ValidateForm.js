@@ -216,7 +216,7 @@ const handleValidate = () => {
         setFeedback(
           isAnon
             ? `✅ You validated anonymously signal #${signalNo}. (no reward)`
-            : `✅ You have validated signal #${signalNo}. ID: ${data.identificator}`
+            : `✅ You have validated signal #${data.signal_number}. ID: ${data.identificator}`
         );
         setDecoded("");
         setCaptchaAnswer("");
